@@ -1,0 +1,109 @@
+Option Public
+Option Explicit
+Dim xlapp As Variant 
+Dim xlwb As Variant 
+Dim xlsheet As Variant
+Dim RPTstartTime As notesdatetime
+Sub Initialize
+	On Error Goto ProcessError
+	
+	Dim ws As NotesUIWorkspace 	
+	Dim UiView As  NotesUIView 	
+	Dim view As NotesView 
+	Dim ViewEntry As NotesDocument
+	Dim ViewEntryCollec As  NotesViewEntryCollection 
+	Dim askme As Integer
+	
+	Set RPTstarttime= New notesdatetime(Now)
+	Set ws=New NotesUIWorkspace 	
+	Set UIView=ws.CurrentView 
+	Set view=uiview.View 
+	Set ViewEntryCollec=view.AllEntries 	
+	
+	If ViewEntryCollec.Count > 0 Then 
+		askme=ws.Prompt (PROMPT_YESNO,"Export", "There are " +Cstr(ViewEntryCollec.Count) +" records in this view to export. Click on YES to export.")
+		If askme=0 Then
+			Exit Sub
+		End If	
+		
+		'create xlsheet
+		Set xlapp=createobject("Excel.Application")
+		Set xlwb=xlapp.workbooks.add()	
+		Set xlsheet=xlwb.worksheets.add()
+		xlsheet.name="Report"
+		With xlapp
+			.Visible = False
+			.Screenupdating=False
+			.Calculation=-4135
+			.DisplayAlerts = False 
+			.Cursor = 2 'xlWait
+		End With
+'Set Column Header
+		Call CreateColHeaders(view )
+		
+		Dim row As Double
+		Dim col As Integer
+		Dim i As Double
+		
+		row=1
+		col=view.ColumnCount - 1
+		Set ViewEntry=View.GetFirstDocument
+		
+		While Not ViewEntry Is Nothing				
+			row=row+1		
+			Print "Exporting Record : "+ Cstr(row)	
+			For i=0 To col
+				If Isarray(viewentry.ColumnValues(i)) Then
+					xlsheet.cells(row,i+1)= Implode(viewentry.ColumnValues(i),";")
+				Else
+					xlsheet.cells(row,i+1)= viewentry.ColumnValues(i)
+				End If
+			Next	
+			Set ViewEntry=View.GetNextDocument(ViewEntry)
+		Wend		
+		
+		xlsheet.columns.entirecolumn.autofit		
+		
+	End If	
+	
+	With xlapp		
+		.Screenupdating=True
+		.Calculation = -4105
+		.Cursor=-4143 'xldefault
+		.DisplayAlerts=True
+		.Visible=True
+	End With
+	
+	Dim RPTendtime As notesdatetime
+	Set RPTendtime=New NotesDateTime(Now)	
+	Print "Report Generation : started at " + Cstr(RPTstarttime.timeonly) + " ~ ended at " +Cstr(RPTendtime.TimeOnly)
+	
+	Set xlapp=Nothing
+	Exit Sub	
+ProcessError:
+	Msgbox Cstr(Error)+"  in Generate Report at line#: "+Cstr(Erl)
+	Exit Sub
+End Sub
+Sub CreateColHeaders(view As NotesView)
+	'Sets column headers
+	On Error Goto erh
+	
+	Dim col As Integer
+	Dim row As Integer
+	row=1
+	col=1
+	
+	Forall x In view.columns
+		With xlsheet
+			.cells(row,col)=x.Title
+			.cells(row,col).interior.colorindex=15
+			.cells(row,col).font.bold=True
+			col=col+1
+		End With
+	End Forall
+	
+	Exit Sub
+erh:
+	Msgbox Cstr(Error)+" in CREATECOLHEADERS at line#: "+Cstr(Erl),0+32,"Export2Excel"
+	Exit Sub
+End Sub

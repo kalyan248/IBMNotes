@@ -1,0 +1,148 @@
+Option Public
+Option Explicit
+Dim RPTstartTime As notesdatetime
+Dim st_tb As String ,end_tb As  String ,st_rw As  String ,end_rw As String ,st_col As String ,end_col As String 
+Dim filenum As  Integer, pathname As String
+Dim tempDir As String
+Sub Initialize
+	On Error Goto ProcessError
+	
+	Dim ws As New NotesUIWorkspace
+	Dim s As New NotesSession	
+	Dim db As notesdatabase
+	Dim UiView As  NotesUIView 	
+	Dim view As NotesView 
+	Dim Doc As NotesDocument
+	Dim ViewEntryCollec As  NotesViewEntryCollection
+	Dim dc As notesdocumentcollection
+	Dim askme As Integer
+	Dim response As Variant
+	Dim selected As Boolean
+	Dim values(1) As Variant
+	Dim docid List As String
+	
+	Set RPTstarttime= New notesdatetime(Now)
+	Set db=s.CurrentDatabase
+	values(0)="All the records in this view"
+	values(1)="Selected records in this view"
+	response=ws.Prompt (PROMPT_OKCANCELLIST, "Export Options","Select a option to export", values(0), values)
+	
+	If Isempty (response) Then
+		Exit Sub
+	End If
+	
+	Set UIView=ws.CurrentView 
+	Set view=uiview.View 
+	Set ViewEntryCollec=view.AllEntries 	
+	
+	If response="Selected records in this view" Then
+		selected=True
+		Set dc=db.UnprocessedDocuments
+		If dc.Count > 0 Then
+			Set doc=dc.GetFirstDocument
+			While Not doc Is Nothing 
+				docid(doc.UniversalID)=doc.UniversalID
+				Set doc=dc.GetNextDocument(doc)
+			Wend
+		End If
+		Print "Selected " + Cstr(dc.Count)
+	Else
+		If ViewEntryCollec.Count > 0 Then 
+			askme=ws.Prompt (PROMPT_YESNO,"Export", "There are " +Cstr(ViewEntryCollec.Count) +" records in this view to export. Click on YES to export.")
+			If askme=0 Then
+				Exit Sub
+			End If	
+		End If
+	End If	
+	
+	
+' Create txt file
+	'TempDir = Environ("Temp")
+	pathname="C:\ExcelExport-" + Format(Cstr(Now),"mmddyyhhmmss")+".xls"
+	fileNum = Freefile()				
+	Open pathname For Output As fileNum%		
+	
+	st_rw="<tr>"
+	st_col="<td>"
+	end_col="</td>"
+	end_rw="</tr>"	
+	'Set Column Header
+	Call CreateColHeaders(view )
+	
+	Dim row As Double
+	Dim col As Integer
+	Dim i As Double
+	
+	row=1
+	col=view.ColumnCount - 1
+	
+	Set Doc=View.GetFirstDocument
+	
+	While Not Doc Is Nothing
+		If selected=True Then
+			If dc.Count +1=row Then 
+				Goto EndProcess
+			End If
+			If Not Iselement(DocID(doc.UniversalID)) Then
+				Print "Processing"				
+				Goto NEXTDOC				
+			End If
+		End If
+		
+		Print #filenum, st_rw		
+		row=row+1		
+		Print "Exporting Record : "+ Cstr(row)	
+		
+		For i=0 To col
+			Print #filenum, st_col
+			
+			If Isarray( Doc.ColumnValues(i)) Then
+				Print #filenum, Implode(Doc.ColumnValues(i)	,";")
+			Else
+				Print #filenum, Doc.ColumnValues(i)	
+			End If
+			Print #filenum, end_col
+		Next	
+		Print #filenum, end_rw		
+NextDoc:		
+		Set Doc=View.GetNextDocument(Doc)		
+	Wend				
+EndProcess:	
+	Print #filenum, "</table></html>"
+	Close #filenum	
+	
+	Dim RPTendtime As notesdatetime
+	Set RPTendtime=New NotesDateTime(Now)	
+	Print "Report Generation : started at " + Cstr(RPTstarttime.timeonly) + " ~ ended at " +Cstr(RPTendtime.TimeOnly)
+	Msgbox "Report is available at " +pathname
+	
+	Exit Sub	
+ProcessError:
+	Msgbox Cstr(Error)+"  in Generate Report at line#: "+Cstr(Erl)
+	Exit Sub
+End Sub
+Sub CreateColHeaders(view As NotesView)
+	'Sets column headers
+	On Error Goto erh
+	
+	Dim col As Integer
+	Dim row As Integer
+	row=1
+	col=1
+	
+	Print #filenum, "<html><table>"
+	Print #filenum, st_rw
+	Forall x In view.columns		
+		
+		Print #filenum, st_col			
+		Print #filenum,x.Title
+		Print #filenum, end_col
+		
+	End Forall
+	Print #filenum, end_rw
+	
+	Exit Sub
+erh:
+	Msgbox Cstr(Error)+" in CREATECOLHEADERS at line#: "+Cstr(Erl),0+32,"Export2Excel"
+	Exit Sub
+End Sub
