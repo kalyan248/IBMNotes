@@ -1,0 +1,261 @@
+'// W32 API declares
+Declare Private Function W32GetActiveWindow Lib "user32" Alias "GetActiveWindow" ( _
+) As Long
+
+Declare Private Function W32OpenClipboard Lib "user32" Alias "OpenClipboard" ( _
+Byval hWnd As Long _
+) As Long
+
+Declare Private Function W32CloseClipboard Lib "user32" Alias "CloseClipboard" ( _
+) As Long
+
+Declare Private Function W32EmptyClipboard Lib "user32" Alias "EmptyClipboard" ( _
+) As Long
+
+Declare Private Function W32GetClipboardData Lib "user32" Alias "GetClipboardData" ( _
+Byval wFormat As Long _
+) As Long
+
+Declare Private Function W32SetClipboardData Lib "user32" Alias "SetClipboardData" ( _
+Byval wFormat As Long, _
+Byval hMem As Long _
+) As Long
+
+Declare Private Function W32IsClipboardFormatAvailable Lib "user32" Alias "IsClipboardFormatAvailable" ( _
+Byval wFormat As Long _
+) As Long
+
+Declare Private Function W32GlobalLock Lib "kernel32" Alias "GlobalLock" ( _
+Byval hMem As Long _
+) As Long
+
+Declare Private Function W32GlobalUnlock Lib "kernel32" Alias "GlobalUnlock" ( _
+Byval hMem As Long _
+) As Long
+
+Declare Private Function W32GlobalAllocate Lib "kernel32" Alias "GlobalAlloc" ( _
+Byval wFlags As Long, _
+Byval dwBytes As Long _
+) As Long
+
+Declare Private Function W32WriteMemoryToString Lib "kernel32" Alias "lstrcpyA" ( _
+Byval lpString1 As String, _
+Byval lpString2 As Any _
+) As Long
+
+Declare Private Function W32WriteStringToMemory Lib "kernel32" Alias "lstrcpyA" ( _
+Byval lpString1 As Long, _
+Byval lpString2 As String _
+) As Long
+
+
+Function getClipBoardText(pblnClearClipboard As Boolean, pstrTextOut As String) As Boolean
+'//	+++ GLOBAL VARIABLES +++
+'//	Constants:
+'//	{record any global constants here}
+'//	
+'//	Class instances:
+'//	{record any global class intances here}
+'//	
+'//	Primitives:
+'//	{record any global primitives here}
+'//	
+'//	05/21/2004 - Dallas Gimpel
+'//	
+'//	DESCRIPTION:
+'//	This function attempts to programmatically open the Windows clipboard and write the
+'//	text held in memory (if any exists) to the output parameter.
+'//	
+'//	Notes from MSDN on the "CF_TEXT" standard clipboard format . . .
+'//	"Text format. Each line ends with a carriage return/linefeed (CR-LF) combination. A
+'//	null character signals the end of the data. Use this format for ANSI text."
+'//	
+'//	NOTE:
+'//	This code is obviously Win/32 specific.
+'//	
+'//	INPUT:
+'//	pblnClearClipboard - Boolean, flag indicating whether or not to clear the clipboard
+'//	
+'//	OUTPUT:
+'//	pstrTextOut - String, receives text (if any can be retrieved) held in the clipboard
+'//	Function returns true if text can be successfully retrieved from the clipboard
+
+On Error Goto errorHandler
+
+Const CF_TEXT = 1 '// one of the "standard clipboard formats"
+Const MAXSIZE = 4096
+Dim lngRC As Long
+Dim lngCBStatus As Long
+Dim lngHCBMemory As Long
+Dim lngGMemPointer As Long
+Dim strBuff As String * MAXSIZE
+
+getClipBoardText = False
+
+'//	Attempt to open the clipboard.
+lngCBStatus& = W32OpenClipboard(0&)
+If lngCBStatus& = 0 Then
+Msgbox {Unable to access the text in memory (i.e., contents of the "clipboard") - another application may have it locked.}, , "Error encountered . . ."
+Goto functionExit
+End If
+
+'//	Attempt to get a handle to the text currently held in the clipboard.
+lngHCBMemory& = W32GetClipboardData(CF_TEXT) 
+If lngHCBMemory& = 0 Then
+Msgbox {There is no text available in memory (i.e., copied to the "clipboard") - unable to continue.}, , "No text available . . ."
+Goto functionExit
+End If
+
+'//	Attempt to lock the memory and store a pointer to it.
+lngGMemPointer& = W32GlobalLock(lngHCBMemory&)
+If lngGMemPointer& = 0 Then '// no text in memory - close clipboard & exit
+Msgbox "Failed to lock the memory from which the text is to be copied - unable to continue.", , "Error encountered . . ."
+Goto functionExit
+End If
+
+'//	Copy the in-memory string (by pointer location) into the buffer.
+strBuff$ = Space$(MAXSIZE)
+lngRC& = W32WriteMemoryToString(strBuff$, lngGMemPointer&)
+If lngRC& = 0 Then '// an error has occurred in the copy operation
+Msgbox "An error was encountered while attempting to copy the string from memory - unable to continue.", , "Error encountered . . ."
+Else
+strBuff$ = Mid(strBuff$, 1, Instr(1, strBuff$, Chr$(0), 0) - 1) '// remove the null terminator
+pstrTextOut$ = Trim(strBuff$) '// clean up the string
+If pblnClearClipboard Then
+Call W32EmptyClipboard() '// clear contents of the clipboard
+End If
+getClipBoardText = True
+End If
+lngRC& = W32GlobalUnlock(lngHCBMemory&) '// release lock on the memory
+
+functionExit:
+'//	Always make sure to close the clipboard (even in the event of an error).
+If Not(lngCBStatus& = 0) Then
+Call W32CloseClipboard()
+lngCBStatus& = 0
+End If
+Exit Function
+
+errorHandler:
+Msgbox "Error " & Err & ": " & Error$ & " encountered at line " & Erl & " of " & Getthreadinfo(1) & ".", , "Error encountered . . ."
+Print "Error " & Err & ": " & Error$ & " encountered at line " & Erl & " of " & Getthreadinfo(1) & " . . ."
+Resume functionExit
+End Function
+
+
+Function setClipboardText(pstrText As String) As Boolean
+'//	+++ GLOBAL VARIABLES +++
+'//	Constants:
+'//	{record any global constants here}
+'//	
+'//	Class instances:
+'//	{record any global class intances here}
+'//	
+'//	Primitives:
+'//	{record any global primitives here}
+'//	
+'//	05/21/2004 - Dallas Gimpel
+'//	
+'//	DESCRIPTION:
+'//	This function attempts to programmatically copy the text passed in to the Windows
+'//	clipboard (if it can be opened).
+'//	
+'//	NOTE:
+'//	This code is obviously Win/32 specific.
+'//	
+'//	INPUT:
+'//	pstrText - String, text to be copied to the Windows clipboard
+'//	
+'//	OUTPUT:
+'//	Function returns true if text can be successfully copied to the clipboard
+
+On Error Goto errorHandler
+
+'//	one of the "standard clipboard formats"
+Const CF_TEXT = 1
+'//	global memory flags
+Const GMEM_FIXED& = &H0
+Const GMEM_MOVEABLE& = &H2
+Const GMEM_NOCOMPACT& = &H10
+Const GMEM_NODISCARD& = &H20
+Const GMEM_ZEROINIT& = &H40
+Const GMEM_MODIFY& = &H80
+Const GMEM_DISCARDABLE& = &H100
+Const GMEM_NOT_BANKED& = &H1000
+Const GMEM_SHARE& = &H2000
+Const GMEM_DDESHARE& = &H2000
+Const GMEM_NOTIFY& = &H4000
+Const GMEM_LOWER& = GMEM_NOT_BANKED
+Const GMEM_VALID_FLAGS& = &H7F72
+Const GMEM_INVALID_HANDLE& = &H8000
+Const GHND& = (GMEM_MOVEABLE Or GMEM_ZEROINIT)
+Const GPTR& = (GMEM_FIXED Or GMEM_ZEROINIT)
+Dim lngHWnd As Long
+Dim lngCBStatus As Long
+Dim lngHGMem As Long
+Dim lngGMemPointer As Long
+Dim lngSize As Long
+Dim lngRC As Long
+
+setClipboardText = False
+
+'//	Get a handle to the current window.
+lngHWnd& = W32GetActiveWindow()
+
+'//	Determine the size required.
+lngSize& = Clng(Len(pstrText$) + 1)
+
+'//	Attempt to obtain a memory handle.
+lngHGMem& = W32GlobalAllocate(GPTR&, lngSize&)
+If lngHGMem& = 0 Then
+Msgbox "An error was encountered while attempting to obtain a global memory handle.", , "Error encountered . . ."
+Goto functionExit
+End If
+
+'//	Attempt to lock the memory handle and store a pointer to it.
+lngGMemPointer& = W32GlobalLock(lngHGMem&)
+If lngGMemPointer& = 0 Then
+Msgbox "Failed to lock the memory to which the text is to be copied - unable to continue.", , "Error encountered . . ."
+Goto functionExit
+End If
+
+'//	Copy the string passed into the memory allocated.
+lngRC& = W32WriteStringToMemory(lngGMemPointer&, pstrText$)
+
+'//	Release the memory.
+Call W32GlobalUnlock(lngHGMem&)
+
+'//	Attempt to open the clipboard.
+lngCBStatus& = W32OpenClipboard(lngHWnd&)
+If lngCBStatus& = 0 Then
+Msgbox {Could not access the "clipboard" - another application may have it locked.}, , "Error encountered . . ."
+Goto functionExit
+End If
+
+'//	Always empty the clipboard first.
+lngRC& = W32EmptyClipboard()
+
+'//	Now attempt to copy the text to the clipboard.
+lngRC& = W32SetClipboardData(CF_TEXT, lngHGMem&)
+
+'//	Check to see if the text is there.
+lngRC& = W32IsClipboardFormatAvailable(CF_TEXT)
+If lngRC& = 0 Then
+Msgbox "An error was encountered while attempting to copy the specified text to the clipboard.", , "Error encountered . . ."
+Else
+setClipboardText = True
+End If
+
+functionExit:
+'//	Always make sure to close the clipboard (even in the event of an error).
+If Not(lngCBStatus& = 0) Then
+Call W32CloseClipboard()
+lngCBStatus& = 0
+End If	
+Exit Function
+
+errorHandler:
+Msgbox "Error " & Err & ": " & Error$ & " encountered at line " & Erl & " of " & Getthreadinfo(1) & ".", , "Error encountered . . ."
+Print "Error " & Err & ": " & Error$ & " encountered at line " & Erl & " of " & Getthreadinfo(1) & " . . ."
+Resume functionExit
+End Function
